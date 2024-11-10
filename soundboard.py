@@ -5,6 +5,7 @@ from tkinter import messagebox
 import pyttsx3
 import os
 import sys
+import time
 import threading
 import logging
 from gtts import gTTS
@@ -176,19 +177,23 @@ class ControlGrid(tk.LabelFrame):
         tk.Button(self, command=refresh_sound_grid, text="Refresh Window", padx=10).grid(row=get_y_pos(1), column=1, sticky='ew')
     def convert_text_to_audio(self, text):
         if text:
-            # Create a safe filename for the audio file
-            safe_name = re.sub(r'\W+', '_', text)  # Replace non-alphanumeric characters with underscores
-            audio_file = os.path.join(sfx_dir, f"{safe_name}.mp3")  # Save in the sfx directory
+            safe_name = re.sub(r'\W+', '_', text)  # Create a filename-friendly string
+            audio_file = os.path.join(sfx_dir, f"{safe_name}.wav")  # Path to save the audio file
 
-            # Generate audio
-            tts = gTTS(text=text, lang='en')
-            tts.save(audio_file)
+            # Initialize pyttsx3 engine
+            engine = pyttsx3.init()
+            engine.save_to_file(text, audio_file)  # Save the audio file offline
+            engine.runAndWait()
+
+            # Ensure file is saved before playing
+            time.sleep(0.1)  # Small delay to ensure file readiness
 
             # Refresh sound grid to show the new sound
             refresh_sound_grid()
 
-            # Optionally, play the sound after creation (if desired)
-            # playsound(audio_file)
+            # Play the audio using pygame
+            pygame.mixer.music.load(audio_file)
+            pygame.mixer.music.play()
 
 
 class StoppableThread(threading.Thread):
