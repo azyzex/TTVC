@@ -109,10 +109,7 @@ class SoundGrid(tk.LabelFrame):
                 row += 1
         else:
             tk.Label(self.scrollable_frame, textvariable=sound_error_text, anchor="w").grid(row=0, column=0, sticky="ew")
-    def refresh(self):
-        self.grid_forget()
-        new_grid = SoundGrid(root, text=f'Sounds ({len(get_sfx())}/{len(bindable_chars)})')
-        new_grid.grid(row=0, column=1, sticky='nesw', padx=5, pady=10)
+
 
 class ControlGrid(tk.LabelFrame):
     def __init__(self, *args, **kwargs):
@@ -134,10 +131,22 @@ class ControlGrid(tk.LabelFrame):
             else:
                 return y
 
+
         tk.Label(self, text='Text to Speak').grid(row=get_y_pos(0), column=0, sticky=tk.E)
-        text_input = tk.StringVar()
-        entry = tk.Entry(self, textvariable=text_input)
+
+        # Use a Text widget for multi-line input
+        text_input = tk.StringVar()  # Keep using StringVar for binding
+        entry = tk.Text(self, height=5, width=40)  # Multi-line input, adjust height/width
         entry.grid(row=get_y_pos(1), column=1, sticky='ew')
+
+        # To update the StringVar from the Text widget
+        def update_text_var(*args):
+            text_input.set(entry.get("1.0", "end-1c"))
+
+        # Bind the update to the Text widget change event
+        entry.bind("<KeyRelease>", update_text_var)
+                
+
 
         # Change Speak button functionality to save the audio file
         tk.Button(self, text="Speak", command=lambda: self.convert_text_to_audio(text_input.get()), padx=10).grid(row=get_y_pos(1), column=2, sticky='ew')
@@ -153,8 +162,6 @@ class ControlGrid(tk.LabelFrame):
         tk.Label(self, text='Resume sound').grid(row=get_y_pos(0), column=0, sticky=tk.E)
         tk.Button(self, command=lambda: unpause(), text="Resume (alt+3)", padx=10).grid(row=get_y_pos(1), column=1, sticky='ew')
 
-        tk.Label(self, text='Random sound').grid(row=get_y_pos(0), column=0, sticky=tk.E)
-        tk.Button(self, command=lambda: random_sound(), text="Random (alt+4)", padx=10).grid(row=get_y_pos(1), column=1, sticky='ew')
 
         tk.Label(self, text='Volume').grid(row=get_y_pos(0), column=0, sticky=tk.E)
         volume_slider = tk.Scale(self, from_=0, to=100, orient=tk.HORIZONTAL, tickinterval=100, command=change_volume, variable=volume)
@@ -164,36 +171,49 @@ class ControlGrid(tk.LabelFrame):
         tk.Label(self, text='Playback Device').grid(row=get_y_pos(0), column=0, sticky=tk.E)
         opts = ttk.Combobox(self, values=outputs, state='readonly')
         opts.bind('<<ComboboxSelected>>', change_device)
-        opts.set('CABLE Input (VB-Audio Virtual Cable)' if 'CABLE Input (VB-Audio Virtual Cable)' in outputs else outputs[0])
+        opts.set('Line 1 (Virtual Audio Cable)' if 'Line 1 (Virtual Audio Cable)' in outputs else outputs[0])
         opts.grid(row=get_y_pos(1), column=1, sticky='ew')
 
-        ttk.Checkbutton(self, text="Allow simultaneous playback", onvalue=1, offvalue=0, variable=simultaneous).grid(row=get_y_pos(1, True), column=1, sticky='w')
         ttk.Checkbutton(self, text="Loop", variable=loop, onvalue=1, offvalue=0).grid(row=get_y_pos(1, True), column=1, sticky='w')
 
-        tk.Label(self, text='Recording').grid(row=get_y_pos(0), column=0, sticky=tk.E)
-        tk.Button(self, command=open_rec_menu, text="Open Recording Menu", padx=10).grid(row=get_y_pos(1), column=1, sticky='ew')
 
-        tk.Label(self, text='Refresh').grid(row=get_y_pos(0), column=0, sticky=tk.E)
-        tk.Button(self, command=refresh_sound_grid, text="Refresh Window", padx=10).grid(row=get_y_pos(1), column=1, sticky='ew')
+
     def convert_text_to_audio(self, text):
         if text:
             safe_name = re.sub(r'\W+', '_', text)  # Create a filename-friendly string
             audio_file = os.path.join(sfx_dir, f"{safe_name}.wav")  # Path to save the audio file
 
-            # Initialize pyttsx3 engine
+            # Initialize pyttsx3 engine and save audio file offline
             engine = pyttsx3.init()
-            engine.save_to_file(text, audio_file)  # Save the audio file offline
+            engine.save_to_file(text, audio_file)
             engine.runAndWait()
 
             # Ensure file is saved before playing
-            time.sleep(0.1)  # Small delay to ensure file readiness
+            time.sleep(0.1)
 
-            # Refresh sound grid to show the new sound
-            refresh_sound_grid()
-
-            # Play the audio using pygame
+            # Initialize pygame and play the audio
+            pygame.mixer.init()
             pygame.mixer.music.load(audio_file)
             pygame.mixer.music.play()
+
+            # Define the file deletion function after playback
+            def delete_file():
+                try:
+                    pygame.mixer.music.stop()  # Stop the playback if still playing
+                    pygame.mixer.quit()  # Quit pygame mixer to release file access
+                    os.remove(audio_file)  # Attempt to delete the file
+                    print(f"Deleted temporary file: {audio_file}")
+                except Exception as e:
+                    print(f"Failed to delete {audio_file}: {e}")
+
+            # Function to periodically check playback status
+            def check_playback():
+                if not pygame.mixer.music.get_busy():
+                    delete_file()  # Delete when playback is finished
+                else:
+                    root.after(500, check_playback)  # Check every 500ms
+
+            check_playback()  # Start checking playback status
 
 
 class StoppableThread(threading.Thread):
@@ -297,36 +317,6 @@ class Recorder:
         return max(numbers) + 1
 
 
-# todo: finish this
-def open_rec_menu():
-    if recorder.usable:
-        recorder_window = tk.Toplevel(root)
-
-        recorder_window.title("Recording Menu")
-        recorder_window.geometry("300x200")
-
-        tk.Label(recorder_window, textvariable=rec_text).pack()
-        tk.Button(recorder_window, command=start_recording, text="Start Recording", padx=10).pack()
-        tk.Button(recorder_window, command=stop_recording, text="Stop Recording", padx=10).pack()
-        tk.Button(recorder_window, command=lambda: recorder.save(), text="Save Recording", padx=10).pack()
-
-        tk.Label(recorder_window, text='').pack()
-        tk.Label(recorder_window, text='File Name').pack()
-        tk.Entry(recorder_window, textvariable=recording_file_name).pack()
-    else:
-        showerror('Recorder Unusable', 'Due to the Stereo Mix device being unavailable, the recorder cannot be used.')
-
-
-def start_recording():
-    recorder.start()
-    rec_text.set('Recording')
-    assert recorder.is_recording()
-
-
-def stop_recording():
-    recorder.stop()
-    rec_text.set('Not Recording')
-
 
 def play(sfx):
     if simultaneous.get():
@@ -373,10 +363,6 @@ def unpause():
     pygame.mixer.unpause()
     assert pygame.mixer.get_busy()
 
-
-def random_sound():
-    sfx = random.choice(get_sfx())
-    play(sfx[0])
 
 
 def change_volume(vol: str):
@@ -451,7 +437,7 @@ def get_envvars():
 
 
 def init():
-    global sound_grid
+
 
     logging.debug('Initializing...')
 
@@ -459,12 +445,12 @@ def init():
     pygame.init()
 
     # set audio output device to vb cable if installed
-    if 'CABLE Input (VB-Audio Virtual Cable)' in outputs:
-        logging.debug('Using VB-Audio Virtual Cable')
+    if 'Line 1 (Virtual Audio Cable))' in outputs:
+        logging.debug('Using Line 1 (Virtual Audio Cable)')
         pygame.mixer.quit()
-        pygame.mixer.init(devicename='CABLE Input (VB-Audio Virtual Cable)')
+        pygame.mixer.init(devicename='Line 1 (Virtual Audio Cable)')
     else:
-        logging.warning('VB Audio Virtual Cable was not found on your system.')
+        logging.warning('Line 1 (Virtual Audio Cable) was not found on your system.')
         pygame.mixer.init()
 
     pygame.mixer.music.set_volume(0.5)
@@ -475,22 +461,17 @@ def init():
     logging.debug('Done!')
 
     root.title("Soundboard")
-    root.geometry('600x320')
+    root.geometry('500x310')
     root.resizable(width=False, height=False)
 
     root.columnconfigure(1, weight=1)
 
     ControlGrid(root, text="Controls").grid(row=0, column=0, sticky='nesw', padx=5, pady=10, ipadx=5, ipady=5)
-    sound_grid.grid(row=0, column=1, sticky='nesw', padx=5, pady=10)
+
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
 
 
-def refresh_sound_grid():
-    sound_grid.grid_forget()
-    new_grid = SoundGrid(root, text=f'Sounds ({len(get_sfx())}/{len(bindable_chars)})')
-    new_grid.grid(row=0, column=1, sticky='nesw', padx=5, pady=10)
-    sound_grid.refresh()
 
 
 if __name__ == "__main__":
@@ -512,7 +493,6 @@ if __name__ == "__main__":
 
     outputs = pygame._sdl2.audio.get_audio_device_names(False)  # gets output devices
     bindable_chars = '567890qwertyuiopasdfghjklzxcvbnm'
-    sound_grid = SoundGrid(root, text=f'Sounds ({len(get_sfx())}/{len(bindable_chars)})')
 
     get_envvars()
 
