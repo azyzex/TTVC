@@ -15,7 +15,7 @@ from tkinter.messagebox import askyesno, showerror
 import os, random, sys, logging, re, wave, threading
 from system_hotkey import SystemHotkey
 from pyaudio import PyAudio, paInt16
-
+import sounddevice as sd
 
 
 # import pygame without that message
@@ -40,9 +40,7 @@ def keybind_listener():
 
     # control keybinds
     hk.register(['alt', '1'], callback=lambda event: stop())
-    hk.register(['alt', '2'], callback=lambda event: pause())
-    hk.register(['alt', '3'], callback=lambda event: unpause())
-    hk.register(['alt', '4'], callback=lambda event: random_sound())
+
 
 
 def get_sfx():
@@ -156,13 +154,6 @@ class ControlGrid(tk.LabelFrame):
         tk.Label(self, text='Stop sound').grid(row=get_y_pos(0), column=0, sticky=tk.E)
         tk.Button(self, command=lambda: stop(), text="Stop (alt+1)", padx=10).grid(row=get_y_pos(1), column=1, sticky='ew')
 
-        tk.Label(self, text='Pause sound').grid(row=get_y_pos(0), column=0, sticky=tk.E)
-        tk.Button(self, command=lambda: pause(), text="Pause (alt+2)", padx=10).grid(row=get_y_pos(1), column=1, sticky='ew')
-
-        tk.Label(self, text='Resume sound').grid(row=get_y_pos(0), column=0, sticky=tk.E)
-        tk.Button(self, command=lambda: unpause(), text="Resume (alt+3)", padx=10).grid(row=get_y_pos(1), column=1, sticky='ew')
-
-
         tk.Label(self, text='Volume').grid(row=get_y_pos(0), column=0, sticky=tk.E)
         volume_slider = tk.Scale(self, from_=0, to=100, orient=tk.HORIZONTAL, tickinterval=100, command=change_volume, variable=volume)
         volume_slider.set(50)
@@ -192,7 +183,7 @@ class ControlGrid(tk.LabelFrame):
             time.sleep(0.1)
 
             # Initialize pygame and play the audio
-            pygame.mixer.init()
+            pygame.mixer.init(devicename='Line 1 (Virtual Audio Cable)')
             pygame.mixer.music.load(audio_file)
             pygame.mixer.music.play()
 
@@ -331,37 +322,6 @@ def play(sfx):
         pygame.mixer.music.play(loops=(999 if loop.get() else 0))
 
 
-def stop():
-    for i in range(0, (channel_amount + 1)):
-        try:
-            pygame.mixer.Channel(i).stop()
-        except IndexError:
-            continue
-
-    pygame.mixer.music.stop()
-    assert not pygame.mixer.get_busy()
-
-
-def pause():
-    for i in range(0, (channel_amount + 1)):
-        try:
-            pygame.mixer.Channel(i).pause()
-        except IndexError:
-            continue
-
-    pygame.mixer.pause()
-    assert pygame.mixer.get_busy()
-
-
-def unpause():
-    for i in range(0, (channel_amount + 1)):
-        try:
-            pygame.mixer.Channel(i).unpause()
-        except IndexError:
-            continue
-
-    pygame.mixer.unpause()
-    assert pygame.mixer.get_busy()
 
 
 
